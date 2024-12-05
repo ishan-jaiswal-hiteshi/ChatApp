@@ -105,6 +105,10 @@ io.on("connection", (socket) => {
     // update users to everyone in the room
     io.to(roomId).emit("roomUsers", rooms[roomId].users);
 
+    //emit all messages
+    io.to(roomId).emit("roomMessages", rooms[roomId].messages);
+    //console.log(rooms[roomId].messages);
+
     //socket.data.userId = newUserId;
   });
 
@@ -115,6 +119,7 @@ io.on("connection", (socket) => {
       const userIndex = rooms[roomId].users.indexOf(userId);
       if (userIndex !== -1) {
         rooms[roomId].users.splice(userIndex, 1);
+        //update user list
         io.to(roomId).emit("roomUsers", rooms[roomId].users);
       }
     }

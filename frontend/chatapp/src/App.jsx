@@ -28,7 +28,7 @@ function App() {
 
     // Listen for updated room users and messages
     socket.on("roomUsers", (users) => {
-      console.log(users);
+      console.log("updated users", users);
       setRoomUsers(users);
     });
 
@@ -68,9 +68,9 @@ function App() {
   //Join room
   const joinRoom = () => {
     if (roomId && userId) {
-      setroomName(roomId);
       // Emit joinRoom event to the server
       socket.emit("joinRoom", { roomId, userId });
+      setroomName(roomId);
     }
   };
 
@@ -102,6 +102,7 @@ function App() {
       socket.emit("leaveRoom", { roomId, userId });
       setroomName("");
       setRoomId("");
+      setRoomUsers([]);
     }
   };
 
