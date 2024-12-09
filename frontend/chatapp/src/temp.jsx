@@ -1,96 +1,174 @@
-import { io } from "socket.io-client";
-import { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
+import socketIOClient from "socket.io-client";
 import "./App.css";
 
-const socket = io("http://localhost:5000");
+const socket = socketIOClient("http://localhost:5000");
 
 function App() {
-  const [userId, setUserId] = useState("");
-  const [receiverId, setReceiverId] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [userId, setUserId] = useState(null);
   const [message, setMessage] = useState("");
+  const [roomId, setRoomId] = useState("");
+  const [roomMessages, setRoomMessages] = useState([]);
+  const [directMessage, setDirectMessage] = useState("");
+  const [receiverEmail, setReceiverEmail] = useState("");
+  const [roomUsers, setRoomUsers] = useState([]);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
-    // Register user when `userId` is set
+    socket.on("userRegistered", (user) => {
+      setUserId(user.userId);
+      setIsLoggedIn(true);
+      console.log("User registered:", user);
+    });
+
+    socket.on("userLoggedIn", (user) => {
+      setUserId(user.userId);
+      setIsLoggedIn(true);
+      console.log("User logged in:", user);
+    });
+
+    socket.on("roomUsers", (users) => {
+      setRoomUsers(users);
+    });
+
+    socket.on("newMessage", (msg) => {
+      setRoomMessages((prevMessages) => [
+        ...prevMessages,
+        { senderId: msg.userId, content: msg.content },
+      ]);
+    });
+
+    socket.on("newDirectMessage", (msg) => {
+      alert(`New direct message from ${msg.senderId}: ${msg.content}`);
+    });
+
+    socket.on("error", (msg) => {
+      alert(msg);
+    });
+  }, []);
+
+  const handleRegister = () => {
+    socket.emit("registerUser", { name, email });
+  };
+
+  const handleLogin = () => {
+    socket.emit("loginUser", { email });
+  };
+
+  const handleJoinRoom = () => {
     if (userId) {
-      socket.emit("registerUser", userId);
+      socket.emit("joinRoom", { roomId, userId });
     }
+  };
 
-    // Listen for incoming messages
-    socket.on("receiveMessage", (msg) => {
-      setMessages((prevMessages) => [...prevMessages, msg]);
-    });
-
-    // Listen for unavailable user notification
-    socket.on("userUnavailable", (unavailableUserId) => {
-      alert(`User ${unavailableUserId} is not online.`);
-    });
-
-    return () => {
-      socket.off("receiveMessage");
-      socket.off("userUnavailable");
-    };
-  }, [userId]);
-
-  const sendMessage = () => {
-    if (message && receiverId) {
-      socket.emit("sendMessage", { senderId: userId, receiverId, message });
+  const handleSendMessage = () => {
+    if (message && roomId) {
+      socket.emit("sendMessage", { userId, roomId, content: message });
       setMessage("");
-    } else {
-      alert("Please provide a valid receiver ID and message.");
+    }
+  };
+
+  const handleSendDirectMessage = () => {
+    if (directMessage && receiverEmail) {
+      socket.emit("sendDirectMessage", {
+        senderId: userId,
+        receiverEmail,
+        content: directMessage,
+      });
+      setDirectMessage("");
+    }
+  };
+
+  const handleLeaveRoom = () => {
+    if (userId && roomId) {
+      socket.emit("leaveRoom", { roomId, userId });
     }
   };
 
   return (
-    <div>
-      <h1>Direct Chat App</h1>
-
-      {/* Set User ID */}
-      {!userId ? (
+    <div className="App">
+      <h1>Socket Chat</h1>
+      {!isLoggedIn ? (
         <div>
+          <h2>Register</h2>
           <input
             type="text"
-            placeholder="Enter Your User ID (e.g., User1)"
-            onChange={(e) => setUserId(e.target.value)}
+            placeholder="Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
           />
-          <button onClick={() => socket.emit("registerUser", userId)}>
-            Register
-          </button>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <button onClick={handleRegister}>Register</button>
+          <h2>Login</h2>
+          <input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <button onClick={handleLogin}>Login</button>
         </div>
       ) : (
-        <h2>Your ID: {userId}</h2>
-      )}
+        <div>
+          <h2>Welcome {name}</h2>
+          <h3>Join Room</h3>
+          <input
+            type="text"
+            placeholder="Room ID"
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value)}
+          />
+          <button onClick={handleJoinRoom}>Join Room</button>
+          <button onClick={handleLeaveRoom}>Leave Room</button>
 
-      {/* Receiver ID */}
-      <input
-        type="text"
-        placeholder="Enter Receiver's User ID"
-        value={receiverId}
-        onChange={(e) => setReceiverId(e.target.value)}
-      />
-
-      {/* Message Input */}
-      <input
-        type="text"
-        placeholder="Type a message"
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-      />
-      <button onClick={sendMessage}>Send</button>
-
-      {/* Display Messages */}
-      <h2>Messages:</h2>
-      <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-        {messages.map((msg, index) => (
-          <div key={index}>
-            <strong>{msg.senderId}:</strong> {msg.message}
-            <span style={{ fontSize: "0.8em", color: "gray" }}>
-              {" "}
-              ({msg.timestamp})
-            </span>
+          <h3>Room Messages</h3>
+          <div>
+            {roomMessages.map((msg, idx) => (
+              <div key={idx}>
+                <strong>{msg.senderId}: </strong>
+                {msg.content}
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+
+          <input
+            type="text"
+            placeholder="Type a message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+          />
+          <button onClick={handleSendMessage}>Send Message</button>
+
+          <h3>Send Direct Message</h3>
+          <input
+            type="email"
+            placeholder="Receiver's Email"
+            value={receiverEmail}
+            onChange={(e) => setReceiverEmail(e.target.value)}
+          />
+          <input
+            type="text"
+            placeholder="Message"
+            value={directMessage}
+            onChange={(e) => setDirectMessage(e.target.value)}
+          />
+          <button onClick={handleSendDirectMessage}>Send Direct Message</button>
+
+          <h3>Room Users</h3>
+          <ul>
+            {roomUsers.map((userId, idx) => (
+              <li key={idx}>{userId}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
