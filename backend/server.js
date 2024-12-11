@@ -285,7 +285,7 @@ app.post("/getPreviousMessages", async (req, res) => {
     } else if (senderId && receiverId) {
       // Fetch messages for a personal chat
       console.log(
-        "sent previous message to direct chat",
+        "sent previous message to direct chat ================",
         roomId,
         senderId,
         receiverId
@@ -400,7 +400,7 @@ io.on("connection", (socket) => {
     let roomId;
     console.log(roomName, userId);
 
-    do roomId = `room-${roomName}-${Randomstring.generate(7)}`;
+    do roomId = `Room-${roomName}-${Randomstring.generate(7)}`;
     while (await Room.findOne({ where: { roomId } }));
 
     try {
