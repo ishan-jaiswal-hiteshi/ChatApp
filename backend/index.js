@@ -16,7 +16,7 @@ const app = express();
 app.use(express.json());
 app.use(
   cors({
-    origin: ["*", "http://192.168.100.249:5173"],
+    origin: ["*", "http://192.168.101.36:5173"],
     methods: ["GET", "POST", "*"],
   })
 );
@@ -25,7 +25,7 @@ const server = createServer(app);
 //Combine Http and Express with Socket
 const io = new Server(server, {
   cors: {
-    origin: ["*", "http://192.168.100.249:5173"],
+    origin: ["*", "http://192.168.101.36:5173"],
     methods: ["GET", "POST", "*"],
   },
 });
@@ -264,13 +264,18 @@ app.post("/getAllJoinedRooms", async (req, res) => {
 // POST API: Get previous messages
 app.post("/getPreviousMessages", async (req, res) => {
   const { roomId, senderId, receiverId } = req.body;
-  console.log("sent previous message ----", roomId, senderId, receiverId);
-
+  console.log(
+    "sent previous message to room ()()()()(",
+    roomId,
+    senderId,
+    receiverId
+  );
   try {
     let messages = [];
 
     // Fetch messages for a room
-    if (roomId) {
+    if (roomId && senderId) {
+      console.log("sending previous message to room ");
       const room = await Room.findOne({ where: { roomId } });
       if (!room) {
         return res.status(404).json({ error: "Room not found" });
@@ -281,11 +286,12 @@ app.post("/getPreviousMessages", async (req, res) => {
         where: { roomId },
         order: [["timestamp", "ASC"]], // ASC to get the first message (oldest first)
       });
+
       console.log(`Fetched messages for room: ${roomId}`);
     } else if (senderId && receiverId) {
       // Fetch messages for a personal chat
       console.log(
-        "sent previous message to direct chat ================",
+        "sent previous message to direct chat",
         roomId,
         senderId,
         receiverId
@@ -420,7 +426,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  /*
   // Join room
   socket.on("joinRoom", async ({ roomId, userId }) => {
     try {
@@ -463,85 +468,122 @@ io.on("connection", (socket) => {
       socket.emit("error", "Failed to join room");
     }
   });
- */
 
-  // Add participant by email
-  socket.on("inviteToRoom", async ({ userId, email, roomId }) => {
-    let user = null;
+  // Invite users to a room
+  socket.on("inviteToRoom", async ({ roomId, users }) => {
+    console.log("Inserting users: ", users, "into room with ID:", roomId);
 
-    //Add participant either by email or userId
+    // Check for invalid input
+    if (!roomId || !Array.isArray(users) || users.length === 0) {
+      socket.emit("error", "Room ID or users array is invalid");
+      return;
+    }
+
     try {
-      if (!Array.isArray(users) || users.length === 0) {
-        socket.emit("error", "No users provided to add to the room");
-        return;
-      }
-
-      // To keep track of results
+      // Keep track of results
       const addedUsers = [];
       const failedUsers = [];
 
-      for (const { userId, email } of users) {
+      // Loop through the provided users
+      for (const userId of users) {
+        console.log("inside for loop -------", userId);
         try {
-          // Find user by email if userId is not provided
           if (!userId) {
-            user = await User.findOne({ where: { email } });
-            if (!user) {
-              failedUsers.push({ userId, email, reason: "User not found" });
-              continue;
-            }
+            failedUsers.push({ userId, reason: "Invalid userId" });
+            continue;
           }
 
-          const resolvedUserId = userId || user.userId;
+          // Fetch the user by userId
+          const resolvedUser = await User.findOne({ where: { userId } });
+          console.log(resolvedUser);
 
-          // Check if the user is already a participant
+          // Log whether the user was found
+          if (!resolvedUser) {
+            console.log(`User with userId ${userId} not found----------`);
+            failedUsers.push({ userId, reason: "User not found" });
+            continue;
+          }
+
+          console.log(`User with userId ${userId} found:------`, resolvedUser);
+
+          const resolvedUserId = resolvedUser.userId;
+
+          // Check if the user is already a participant in the room
           const existingParticipant = await RoomParticipant.findOne({
             where: { userId: resolvedUserId, roomId },
           });
+
           if (existingParticipant) {
+            console.log(
+              `User with userId ${userId} is already in the room--------`
+            );
             failedUsers.push({
               userId: resolvedUserId,
-              email,
               reason: "Already in the room",
             });
             continue;
           }
 
-          // Add the user to the room
+          // Add user to the room
           await RoomParticipant.create({
             userId: resolvedUserId,
             roomId,
           });
-          addedUsers.push({ userId: resolvedUserId, email });
-        } catch (err) {
-          failedUsers.push({ userId, email, reason: "Error adding user" });
-          console.error(`Failed to add user (${userId || email}) to room`, err);
+
+          // Join the real-time room
+          const userSocket = io.sockets.sockets.get(resolvedUser.socketId);
+          if (userSocket) {
+            userSocket.join(roomId);
+            console.log(
+              `User with userId ${userId} joined room ${roomId}----------`
+            );
+          }
+
+          addedUsers.push({
+            userId: resolvedUserId,
+          });
+        } catch (error) {
+          console.error(
+            `Error adding user with userId ${userId} to room`,
+            error
+          );
+          failedUsers.push({ userId, reason: "Error adding user" });
         }
       }
 
-      // Fetch the updated list of rooms for the user
-      const userRooms = await RoomParticipant.findAll({ where: { userId } });
-      const rooms = await Room.findAll({
-        where: { id: userRooms.map((ur) => ur.roomId) },
-        attributes: ["roomId", "name"],
-      });
-      //Update List
-      socket.emit("joinedRooms", { rooms });
-
-      // Notify all participants in the room
+      // Update room participant list for all clients
       const participants = await RoomParticipant.findAll({
         where: { roomId },
       });
-      io.to(roomId).emit(
-        "roomUsers",
-        participants.map((p) => p.userId)
-      );
+      const participantIds = participants.map((p) => p.userId);
 
-      // Notify the user that they have been added to the room
+      // Emit new room user list
+      io.to(roomId).emit("roomUsers", participantIds);
+
+      // Notify initiator of the result
       socket.emit("inviteResults", { addedUsers, failedUsers });
-      console.log(`${(userId, email)} added to room ${roomId}`);
+
+      // Notify added users that they have been added to the room
+      for (const addedUser of addedUsers) {
+        const userSocket = io.sockets.sockets.get(
+          await User.findOne({
+            where: { userId: addedUser.userId },
+          }).then((user) => user.socketId)
+        );
+        if (userSocket) {
+          userSocket.emit("addedToRoom", {
+            roomId,
+            message: "You have been added to a new room",
+          });
+        }
+      }
+
+      console.log(
+        `Invite to room ${roomId} complete: ${addedUsers.length} added, ${failedUsers.length} failed`
+      );
     } catch (error) {
-      console.error(error);
-      socket.emit("error", "Failed to add participant");
+      console.error("Error inviting users to room:", error);
+      socket.emit("error", "Failed to invite users to room");
     }
   });
 
@@ -623,8 +665,19 @@ io.on("connection", (socket) => {
 
   // Send message in room
   socket.on("sendRoomMessage", async ({ senderId, roomId, content }) => {
+    console.log(
+      "sending room message to",
+      roomId,
+      "by the",
+      senderId,
+      "message is ",
+      content,
+      "------==-=-=-=-=-"
+    );
+
     const room = await Room.findOne({ where: { roomId } });
     if (!room) return socket.emit("error", "Failed to send message to room");
+
     const message = await Message.create({
       senderId,
       roomId,
@@ -665,6 +718,7 @@ io.on("connection", (socket) => {
         content: message.content,
         timestamp: message.timestamp,
       });
+
       //To reciver
       io.to(receiver.socketId).emit("newDirectMessage", {
         senderId,
