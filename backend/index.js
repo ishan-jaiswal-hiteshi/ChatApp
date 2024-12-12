@@ -686,11 +686,22 @@ io.on("connection", (socket) => {
       content,
     });
 
-    io.to(roomId).emit("newMessage", {
+    // to all reciver
+    io.in(roomId).emit("newMessage", {
       senderId,
+      roomId,
       content: message.content,
       timestamp: message.timestamp,
     });
+
+    //To sender
+    socket.emit("newMessage", {
+      senderId,
+      roomId,
+      content: message.content,
+      timestamp: message.timestamp,
+    });
+
     console.log(`Message sent in room ${senderId} ${roomId}: ${content}`);
   });
 
