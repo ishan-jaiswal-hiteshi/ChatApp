@@ -37,8 +37,8 @@ const sequelize = new Sequelize({
   password: process.env.PG_PASSWORD,
   host: process.env.PG_HOST,
   port: process.env.PG_PORT,
-  dialect: process.env.PG_DIALECT, // Explicitly specify 'postgres'
-  logging: false, // Disable logging for production, enable for debugging if needed
+  dialect: process.env.PG_DIALECT,
+  logging: false,
   pool: {
     max: 10, // Maximum number of connections
     min: 0, // Minimum number of connections
@@ -607,6 +607,8 @@ io.on("connection", (socket) => {
     const participants = await RoomParticipant.findAll({
       where: { roomId: room.id },
     });
+
+    //emit list of participents
     io.to(roomId).emit(
       "roomUsers",
       participants.map((p) => p.userId)
