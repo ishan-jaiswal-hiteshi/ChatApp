@@ -1,6 +1,4 @@
-### Frontend is a dummy project to test the sockets.
-
-### Currently all the code in in ./backend/index.js
+#### Frontend is a dummy just to test the sockets and Currently all the code in in ./backend/index.js
 
 # Chat Application
 
