@@ -557,6 +557,10 @@ io.on("connection", (socket) => {
       });
       const participantIds = participants.map((p) => p.userId);
 
+      console.log(
+        "list of all the curent participents are -------------",
+        participants
+      );
       // Emit new room user list
       io.to(roomId).emit("roomUsers", participantIds);
 
@@ -665,17 +669,21 @@ io.on("connection", (socket) => {
     }
   });
 
+  //Re joining room with socket
+  socket.on("reJoinRoom", async ({ userId, roomId }) => {
+    if (roomId && userId) {
+      const room = await Room.findOne({ where: { roomId } });
+      if (!room) return socket.emit("error", "Room not found");
+
+      socket.join(roomId);
+      console.log(`User ${userId} rejoined the room ${roomId}`);
+      socket.emit("againJoinedRoom", `You have joined room ${roomId}`);
+    }
+  });
+
   // Send message in room
   socket.on("sendRoomMessage", async ({ senderId, roomId, content }) => {
-    console.log(
-      "sending room message to",
-      roomId,
-      "by the",
-      senderId,
-      "message is ",
-      content,
-      "------==-=-=-=-=-"
-    );
+    //console.log("contejnt", content);
 
     const room = await Room.findOne({ where: { roomId } });
     if (!room) return socket.emit("error", "Failed to send message to room");
@@ -686,9 +694,12 @@ io.on("connection", (socket) => {
       content,
     });
 
-    // to all reciver
-    io.in(roomId).emit("newMessage", {
+    socket.join(roomId);
+
+    // to all reciver // in include reciver
+    io.in(roomId).emit("newRoomMessage", {
       senderId,
+      roomId,
       content: message.content,
       timestamp: message.timestamp,
     });
